@@ -10,7 +10,7 @@ class SRCNN(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(in_channels=64, out_channels=32, kernel_size=1, stride=1, bias=True),
             nn.ReLU(inplace=True),
-            nn.Conv2d(in_channels=32, out_channels=32, kernel_size=5, stride=1, bias=True),
+            nn.Conv2d(in_channels=32, out_channels=3, kernel_size=5, stride=1, bias=True),
         )
 
 

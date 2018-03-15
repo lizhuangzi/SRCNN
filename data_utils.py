@@ -7,15 +7,26 @@ from torch.utils.data.dataset import Dataset
 from torchvision.transforms import Compose, RandomCrop, ToTensor, ToPILImage, CenterCrop, Scale
 import numpy as np
 import skimage.io
+import skimage.transform
 
-def generate_LRImage(h_Dir):
-    imgs = listdir(h_Dir)
 
-    os.mkdir('LRDataSet')
+def generate_LRImage(HR_Dir='HRDataSet',LR_Dir='LRDataSet',scale=3):
+
+    if os.path.exists(LR_Dir):
+        print('LRDataSet exists')
+        return
+
+    os.mkdir(LR_Dir)
+
+    imgs = listdir(HR_Dir)
     for file in imgs:
-        if is_image_file():
-            fu_path = join(h_Dir,file)
+        if is_image_file(file):
+            fu_path = join(HR_Dir,file)
             img = skimage.io.imread(fu_path)
+            img = modcrop(img,scale)
+            w,h,c = img.shape
+            img = skimage.transform.resize(img,(w/scale,h/scale))
+            skimage.io.imsave(join(LR_Dir,'LR'+file),img)
 
 def modcrop(image, scale=3):
     """
@@ -37,20 +48,6 @@ def modcrop(image, scale=3):
         image = image[0:h, 0:w]
     return image
 
-def train_lr_transform(crop_size, upscale_factor):
-    return Compose([
-        ToPILImage(),
-        Scale(crop_size // upscale_factor, interpolation=Image.BICUBIC),
-        ToTensor()
-    ])
-
-
-def train_hr_transform(crop_size):
-    return Compose([
-        RandomCrop(crop_size),
-        ToTensor(),
-    ])
-
 
 
 def calculate_valid_crop_size(crop_size, upscale_factor):
@@ -60,22 +57,31 @@ def is_image_file(filename):
     return any(filename.endswith(extension) for extension in ['.png', '.jpg', '.jpeg', '.PNG', '.JPG', '.JPEG', '.bmp'])
 
 class TrainDatasetFromFolder(Dataset):
-    def __init__(self, dataset_dir, lr_size=33,hr_size=21, upscale_factor=3):
+    def __init__(self, HR_dir, LR_dir, lr_size=33,hr_size=21, upscale_factor=3):
         super(TrainDatasetFromFolder, self).__init__()
         self.lr_size = lr_size
         self.hr_size = hr_size
-        self.image_filenames = [join(dataset_dir, x) for x in listdir(dataset_dir) if is_image_file(x)]
-        crop_size = calculate_valid_crop_size(lr_size, upscale_factor)
-        self.hr_transform = train_hr_transform(hr_size)
-        self.lr_transform = train_lr_transform(crop_size, upscale_factor)
+        self.s = upscale_factor
+        self.HRimage_filenames = [join(HR_dir, x) for x in listdir(HR_dir) if is_image_file(x)]
+        self.LRimage_filenames = [join(LR_dir, x) for x in listdir(LR_dir) if is_image_file(x)]
+
 
     def __getitem__(self, index):
-        hr_image = self.hr_transform(Image.open(self.image_filenames[index]))
-        w,h = hr_image.size
-        x1 = random.randint(0, w - self)
-        y1 = random.randint(0, h - th)
-        lr_image = self.lr_transform(hr_image)
-        return lr_image, hr_image
+        hr_image = Image.open(self.HRimage_filenames[index])
+        lr_image = Image.open(self.LRimage_filenames[index])
+        w,h = lr_image.size
+        w = self.s *w
+        h = self.s * h
+        lr_image.resize((w,h),Image.CUBIC)
+        p = (self.lr_size)/2
+        x1 = random.randint(p, w - p)
+        y1 = random.randint(p, h - p)
+        LRsub_pix = lr_image.crop((x1-p,y1-p,x1+p+1,y1+p+1))
+
+        p2 = (self.hr_size)/2
+        HRsub_pix = hr_image.crop((x1-p2,y1-p2,x1+p2+1,y1+p2+1))
+
+        return ToTensor()(LRsub_pix), ToTensor()(HRsub_pix)
 
     def __len__(self):
-        return len(self.image_filenames)
+        return len(self.HRimage_filenames)
